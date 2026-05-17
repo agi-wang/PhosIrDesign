@@ -1,0 +1,64 @@
+name: xgboost_example
+description: Example XGBoost training configuration with external test-set evaluation
+
+model:
+  model_type: xgboost
+  hyperparameters:
+    n_estimators: 100
+    max_depth: 6
+    learning_rate: 0.1
+    subsample: 0.8
+    colsample_bytree: 0.8
+    random_state: 42
+
+training:
+  n_folds: 10
+  metrics:
+    - rmse
+    - mae
+    - r2
+    - mape
+  early_stopping: false
+  early_stopping_rounds: 10
+  verbose: 1
+  save_fold_models: true
+  save_final_model: true
+  save_training_curves: true
+  save_feature_importance: true
+
+feature:
+  feature_type: combined
+  morgan_bits: 1024
+  morgan_radius: 2
+  combination_method: mean
+  use_cache: true
+  cache_dir: feature_cache
+
+data:
+  data_path: data/PhosIrDB.csv
+  test_data_path: ours.csv  # Post-screening synthesized experimental test set
+  smiles_columns:
+    - L1
+    - L2
+    - L3
+  target_columns:
+    - Max_wavelength(nm)
+    - PLQY
+    - tau(s*10^-6)
+  train_ratio: 1.0
+  val_ratio: 0.0
+  test_ratio: 0.0
+  random_seed: 42
+  multi_target_strategy: independent
+  nan_handling: skip
+
+
+
+logging:
+  project_name: ml_experiment
+  base_dir: runs
+  auto_save: true
+  save_plots: true
+  generate_report: true
+  export_for_publication: false
+  log_level: INFO

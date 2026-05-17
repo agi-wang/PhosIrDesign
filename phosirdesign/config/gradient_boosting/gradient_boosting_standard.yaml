@@ -1,0 +1,30 @@
+name: gradient_boosting_standard
+description: Standard gradient boosting regression training configuration (approximately 15 minutes)
+
+model:
+  model_type: gradient_boosting
+  hyperparameters:
+    n_estimators: 200
+    max_depth: 5
+    learning_rate: 0.1
+    subsample: 0.8
+    min_samples_split: 5
+    min_samples_leaf: 2
+    max_features: sqrt
+    random_state: 42
+
+training:
+  n_folds: 10
+  save_final_model: true
+  verbose: true
+
+feature:
+  feature_type: combined
+  morgan_bits: 1024
+  morgan_radius: 2
+  use_cache: true
+  combination_method: mean
+
+data:
+  multi_target_strategy: independent
+  nan_handling: skip

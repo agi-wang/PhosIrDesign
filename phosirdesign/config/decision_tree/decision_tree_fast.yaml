@@ -1,0 +1,25 @@
+name: decision_tree_fast
+description: Decision tree fast training template
+
+model:
+  model_type: decision_tree
+  hyperparameters:
+    max_depth: 5
+    min_samples_split: 10
+    min_samples_leaf: 5
+
+training:
+  n_folds: 10
+  save_final_model: true
+  verbose: true
+
+feature:
+  feature_type: combined
+  morgan_bits: 1024
+  morgan_radius: 2
+  use_cache: true
+  combination_method: mean
+
+data:
+  multi_target_strategy: independent
+  nan_handling: skip

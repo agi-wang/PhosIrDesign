@@ -1,0 +1,30 @@
+name: catboost_standard
+description: Standard CatBoost training configuration (approximately 15 minutes)
+
+model:
+  model_type: catboost
+  hyperparameters:
+    iterations: 300
+    depth: 6
+    learning_rate: 0.05
+    l2_leaf_reg: 3
+    border_count: 128
+    subsample: 0.8
+    random_seed: 42
+    verbose: false
+
+training:
+  n_folds: 10
+  save_final_model: true
+  verbose: true
+
+feature:
+  feature_type: combined
+  morgan_bits: 1024
+  morgan_radius: 2
+  use_cache: true
+  combination_method: mean
+
+data:
+  multi_target_strategy: independent
+  nan_handling: skip

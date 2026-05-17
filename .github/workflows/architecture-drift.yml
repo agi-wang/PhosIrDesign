@@ -1,0 +1,307 @@
+name: Architecture Drift Check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  xgb-plqy:
+    name: XGBoost PLQY on ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-x64
+            runner: ubuntu-latest
+          - label: github-macos
+            runner: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgomp1
+
+      - name: Run XGBoost PLQY drift slice
+        env:
+          DRIFT_LABEL: ${{ matrix.label }}
+          UV_PYTHON: "3.9"
+          UV_RECREATE: "1"
+        run: |
+          set -euo pipefail
+
+          mkdir -p drift_artifacts
+
+          bash environment/uv.sh
+          source .venv/bin/activate
+
+          OUT="drift_xgb_plqy_${DRIFT_LABEL}"
+          python scripts/cli/automl.py train \
+            data=data/PhosIrDB.csv \
+            test_data=data/ours.csv \
+            project="$OUT" \
+            name=all_models \
+            models=xgboost \
+            training.n_folds=10 \
+            'training.metrics=["r2","rmse","mae"]' \
+            training.save_final_model=true \
+            training.save_fold_models=false \
+            training.save_feature_importance=false \
+            training.verbose=0 \
+            feature.feature_type=combined \
+            feature.morgan_bits=1024 \
+            feature.morgan_radius=2 \
+            feature.combination_method=mean \
+            feature.use_cache=true \
+            'data.smiles_columns=["L1","L2","L3"]' \
+            'data.target_columns=["PLQY"]' \
+            data.multi_target_strategy=intersection \
+            data.nan_handling=skip \
+            data.train_ratio=1.0 \
+            data.val_ratio=0.0 \
+            data.test_ratio=0.0 \
+            comparison.enable=false \
+            export.enable=true \
+            'export.formats=["csv"]' \
+            export.include_predictions=true \
+            export.include_feature_importance=false \
+            export.include_cv_details=true \
+            export.generate_plots=false \
+            export.generate_report=false
+
+          PREDICTIONS="$OUT/all_models/automl_train/xgboost/exports/csv/xgboost_PLQY_all_predictions.csv"
+          if [ ! -f "$PREDICTIONS" ]; then
+            echo "Expected prediction file not found: $PREDICTIONS" >&2
+            exit 1
+          fi
+          cp "$PREDICTIONS" "drift_artifacts/xgboost_PLQY_all_predictions_${DRIFT_LABEL}.csv"
+
+          python - <<'PY'
+          import csv
+          import json
+          import math
+          import os
+          from pathlib import Path
+
+          label = os.environ["DRIFT_LABEL"]
+          prediction_path = Path(f"drift_artifacts/xgboost_PLQY_all_predictions_{label}.csv")
+
+          true_values = []
+          predicted_values = []
+          with prediction_path.open(newline="", encoding="utf-8") as handle:
+              for row in csv.DictReader(handle):
+                  true_values.append(float(row["true"]))
+                  predicted_values.append(float(row["predicted"]))
+
+          def plqy_bin(value):
+              if value < 0.0 or value > 1.0:
+                  return None
+              if value <= 0.1:
+                  return "0-0.1"
+              if value <= 0.5:
+                  return "0.1-0.5"
+              return "0.5-1.0"
+
+          labels = ["0-0.1", "0.1-0.5", "0.5-1.0"]
+          label_to_index = {name: index for index, name in enumerate(labels)}
+          cm = [[0 for _ in labels] for _ in labels]
+          kept_for_cm = 0
+          for actual, predicted in zip(true_values, predicted_values):
+              actual_bin = plqy_bin(actual)
+              predicted_bin = plqy_bin(predicted)
+              if actual_bin is None or predicted_bin is None:
+                  continue
+              cm[label_to_index[actual_bin]][label_to_index[predicted_bin]] += 1
+              kept_for_cm += 1
+
+          cm_normalized = []
+          for row in cm:
+              total = sum(row)
+              cm_normalized.append([value / total if total else None for value in row])
+
+          mean_true = sum(true_values) / len(true_values)
+          ss_res = sum((actual - predicted) ** 2 for actual, predicted in zip(true_values, predicted_values))
+          ss_tot = sum((actual - mean_true) ** 2 for actual in true_values)
+          mae = sum(abs(actual - predicted) for actual, predicted in zip(true_values, predicted_values)) / len(true_values)
+          rmse = math.sqrt(ss_res / len(true_values))
+
+          summary = {
+              "label": label,
+              "rows": len(true_values),
+              "kept_for_confusion_matrix": kept_for_cm,
+              "dropped_after_binning": len(true_values) - kept_for_cm,
+              "r2": 1 - ss_res / ss_tot,
+              "mae": mae,
+              "rmse": rmse,
+              "prediction_min": min(predicted_values),
+              "prediction_max": max(predicted_values),
+              "confusion_matrix_labels": labels,
+              "confusion_matrix_counts": cm,
+              "confusion_matrix_normalized": cm_normalized,
+          }
+          Path(f"drift_artifacts/summary_{label}.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload drift artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xgb-plqy-${{ matrix.label }}
+          path: drift_artifacts/
+          retention-days: 30
+
+  compare:
+    name: Compare drift artifacts
+    needs: xgb-plqy
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Download drift artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: drift_downloads
+
+      - name: Build architecture drift report
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import csv
+          import json
+          import math
+          from pathlib import Path
+
+          root = Path("drift_downloads")
+          summaries = {
+              path.stem.replace("summary_", ""): json.loads(path.read_text(encoding="utf-8"))
+              for path in root.rglob("summary_*.json")
+          }
+          prediction_files = {
+              path.stem.replace("xgboost_PLQY_all_predictions_", ""): path
+              for path in root.rglob("xgboost_PLQY_all_predictions_*.csv")
+          }
+
+          required = ["linux-x64", "github-macos"]
+          missing = [label for label in required if label not in summaries or label not in prediction_files]
+          if missing:
+              raise SystemExit(f"Missing drift artifacts for: {', '.join(missing)}")
+
+          def read_predictions(path):
+              rows = []
+              with path.open(newline="", encoding="utf-8") as handle:
+                  for row in csv.DictReader(handle):
+                      rows.append((float(row["true"]), float(row["predicted"])))
+              return rows
+
+          def plqy_bin(value):
+              if value < 0.0 or value > 1.0:
+                  return None
+              if value <= 0.1:
+                  return "0-0.1"
+              if value <= 0.5:
+                  return "0.1-0.5"
+              return "0.5-1.0"
+
+          linux_rows = read_predictions(prediction_files["linux-x64"])
+          mac_rows = read_predictions(prediction_files["github-macos"])
+          comparable = min(len(linux_rows), len(mac_rows))
+          true_identical = (
+              len(linux_rows) == len(mac_rows)
+              and all(left[0] == right[0] for left, right in zip(linux_rows, mac_rows))
+          )
+          deltas = [
+              abs(linux_rows[index][1] - mac_rows[index][1])
+              for index in range(comparable)
+          ]
+          bin_changes = sum(
+              plqy_bin(linux_rows[index][1]) != plqy_bin(mac_rows[index][1])
+              for index in range(comparable)
+          )
+          allclose = all(delta <= 1e-7 + 1e-5 * abs(mac_rows[index][1]) for index, delta in enumerate(deltas))
+          comparison = {
+              "labels": required,
+              "rows": {label: summaries[label]["rows"] for label in required},
+              "true_identical": true_identical,
+              "predictions_allclose_rtol_1e_5_atol_1e_7": allclose,
+              "prediction_mean_absolute_delta": sum(deltas) / len(deltas),
+              "prediction_max_absolute_delta": max(deltas),
+              "prediction_delta_gt_0_01": sum(delta > 0.01 for delta in deltas),
+              "prediction_delta_gt_0_05": sum(delta > 0.05 for delta in deltas),
+              "prediction_delta_gt_0_10": sum(delta > 0.10 for delta in deltas),
+              "prediction_bin_changes": bin_changes,
+              "prediction_bin_change_fraction": bin_changes / comparable,
+              "summaries": summaries,
+          }
+          Path("architecture_drift_report.json").write_text(
+              json.dumps(comparison, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          def matrix_table(matrix):
+              labels = ["0-0.1", "0.1-0.5", "0.5-1.0"]
+              lines = ["| true / predicted | 0-0.1 | 0.1-0.5 | 0.5-1.0 |", "| --- | ---: | ---: | ---: |"]
+              for label, row in zip(labels, matrix):
+                  lines.append("| " + label + " | " + " | ".join(f"{value:.4f}" for value in row) + " |")
+              return "\n".join(lines)
+
+          lines = [
+              "# Architecture Drift Report",
+              "",
+              "This report compares the XGBoost PLQY external-test predictions generated on Linux and GitHub-hosted macOS runners.",
+              "",
+              "## Prediction Drift",
+              "",
+              "| Metric | Value |",
+              "| --- | ---: |",
+              f"| Comparable rows | {comparable} |",
+              f"| True values identical | {true_identical} |",
+              f"| Predictions allclose | {allclose} |",
+              f"| Mean absolute prediction delta | {comparison['prediction_mean_absolute_delta']:.8f} |",
+              f"| Max absolute prediction delta | {comparison['prediction_max_absolute_delta']:.8f} |",
+              f"| Rows with delta > 0.01 | {comparison['prediction_delta_gt_0_01']} |",
+              f"| Rows with delta > 0.05 | {comparison['prediction_delta_gt_0_05']} |",
+              f"| Rows with delta > 0.10 | {comparison['prediction_delta_gt_0_10']} |",
+              f"| Prediction-bin changes | {bin_changes} |",
+              "",
+              "## Continuous Metrics",
+              "",
+              "| Run | R2 | MAE | RMSE | Pred min | Pred max |",
+              "| --- | ---: | ---: | ---: | ---: | ---: |",
+          ]
+          for label in required:
+              summary = summaries[label]
+              lines.append(
+                  f"| {label} | {summary['r2']:.6f} | {summary['mae']:.6f} | {summary['rmse']:.6f} | "
+                  f"{summary['prediction_min']:.6f} | {summary['prediction_max']:.6f} |"
+              )
+
+          for label in required:
+              lines.extend([
+                  "",
+                  f"## {label} Normalized Confusion Matrix",
+                  "",
+                  matrix_table(summaries[label]["confusion_matrix_normalized"]),
+              ])
+
+          Path("architecture_drift_report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload architecture drift report
+        uses: actions/upload-artifact@v4
+        with:
+          name: architecture-drift-report
+          path: |
+            architecture_drift_report.md
+            architecture_drift_report.json
+          retention-days: 30

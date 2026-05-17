@@ -1,0 +1,26 @@
+name: random_forest_large
+description: Random Forest large training template
+
+model:
+  model_type: random_forest
+  hyperparameters:
+    n_estimators: 500
+    max_depth: null
+    min_samples_split: 2
+    min_samples_leaf: 1
+
+training:
+  n_folds: 10
+  save_final_model: true
+  verbose: true
+
+feature:
+  feature_type: combined
+  morgan_bits: 1024
+  morgan_radius: 2
+  use_cache: true
+  combination_method: mean
+
+data:
+  multi_target_strategy: independent
+  nan_handling: skip

@@ -1,0 +1,29 @@
+name: xgboost_full
+description: XGBoost full training template
+
+model:
+  model_type: xgboost
+  hyperparameters:
+    n_estimators: 500
+    max_depth: 8
+    learning_rate: 0.05
+    subsample: 0.8
+    colsample_bytree: 0.8
+
+training:
+  n_folds: 10
+  save_final_model: true
+  verbose: true
+  early_stopping: true
+  early_stopping_rounds: 50
+
+feature:
+  feature_type: combined
+  morgan_bits: 1024
+  morgan_radius: 2
+  use_cache: true
+  combination_method: mean
+
+data:
+  multi_target_strategy: independent
+  nan_handling: skip

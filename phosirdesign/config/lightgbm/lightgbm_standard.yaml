@@ -1,0 +1,33 @@
+name: lightgbm_standard
+description: Standard LightGBM training configuration (approximately 15 minutes)
+
+model:
+  model_type: lightgbm
+  hyperparameters:
+    num_leaves: 31
+    n_estimators: 300
+    learning_rate: 0.05
+    feature_fraction: 0.8
+    bagging_fraction: 0.8
+    bagging_freq: 5
+    min_child_samples: 20
+    lambda_l1: 0.01
+    lambda_l2: 0.01
+    random_state: 42
+    verbosity: -1
+
+training:
+  n_folds: 10
+  save_final_model: true
+  verbose: true
+
+feature:
+  feature_type: combined
+  morgan_bits: 1024
+  morgan_radius: 2
+  use_cache: true
+  combination_method: mean
+
+data:
+  multi_target_strategy: independent
+  nan_handling: skip

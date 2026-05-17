@@ -1,0 +1,6 @@
+Unnamed: 0,L1,L2,L3,Counterion,Abbreviation_in_the_article,Charge,Max_wavelength(nm),PLQY,tau(s*10^-6),Solvent,DOI,Notes,PLQY_in_train
+Ir1,Cc1cc(-c2[c-]cc(F)c(C(F)(F)F)c2)nc2ccccc12,Cc1cc(-c2[c-]cc(F)c(C(F)(F)F)c2)nc2ccccc12,O=C([O-])c1ccccn1,,Ir1,0,574,0.8835,3.905,CH2Cl2,,,
+Ir2,CC(C)(C)c1c[c-]c(-c2ncc(C#N)c3ccccc23)cc1,CC(C)(C)c1c[c-]c(-c2ncc(C#N)c3ccccc23)cc1,O=C([O-])c1ccccn1,,Ir2,0,665,0.3686,0.887,CH2Cl2,,,
+Ir3,N#Cc1cnc(-c2[c-]c3ccccc3s2)c2ccccc12,N#Cc1cnc(-c2[c-]c3ccccc3s2)c2ccccc12,O=C([O-])c1ccccn1,,Ir3,0,745,0.002,3.362,CH2Cl2,,,
+Ir1a,Cc1cc(-c2[c-]cc(F)c(C(F)(F)F)c2)nc2ccccc12,Cc1cc(-c2[c-]cc(F)c(C(F)(F)F)c2)nc2ccccc12,O=C([O-])c1ncccn1,,Ir1a,0,539,0.76,2.693,CH2Cl2,,,
+Ir1b,Cc1cc(-c2[c-]cc(F)c(C(F)(F)F)c2)nc2ccccc12,Cc1cc(-c2[c-]cc(F)c(C(F)(F)F)c2)nc2ccccc12,FC(F)(F)c1n[n-]c(-c2ccccn2)n1,,Ir1b,0,571,0.7122,3.771,CH2Cl2,,,

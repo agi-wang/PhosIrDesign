@@ -1,0 +1,5 @@
+#!/bin/bash
+# AutoML command-line wrapper
+# Usage: scripts/cli/automl train model=xgboost data=mydata.csv
+
+python "$(dirname "$0")/automl.py" "$@"
