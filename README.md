@@ -45,7 +45,6 @@ This repository captures the computational part of that loop:
 | `phosirdesign/` | Reusable Python code for the computational workflow |
 | `scripts/` | Entry points for reproduction, analysis, prediction, and export |
 | `environment/` | Python environment bootstrap and dependency files |
-| `.github/workflows/` | Maintainer workflows for release computation and architecture-drift checks |
 
 The main prediction targets are:
 
@@ -98,8 +97,6 @@ Maintainers can then package a sanitized copy of the resulting `Project_Output` 
 
 Auxiliary experiment pickle files, fold-level NumPy archives, and Excel exports are omitted from public release assets.
 
-For platform-sensitivity checks, maintainers can also run the manual `Architecture Drift Check` workflow. It compares a targeted model slice on Linux and GitHub-hosted macOS, then uploads a compact report comparing prediction deltas, bin changes, and normalized confusion matrices.
-
 ## Output Guide
 
 Workflow outputs are generated outside the tracked source tree. Local runs write a fresh indexed directory:
@@ -130,8 +127,7 @@ PhosIrDesign/
 ├── data/
 ├── phosirdesign/
 ├── scripts/
-├── environment/
-└── .github/workflows/
+└── environment/
 ```
 
 The root directory is kept intentionally small. The executable workflow starts from `run.sh`; implementation details live under `scripts/`, and reusable Python code lives under `phosirdesign/`.
