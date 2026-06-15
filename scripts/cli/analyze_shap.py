@@ -4,9 +4,9 @@ SHAP interpretability analysis tool - post-processing script
 Analyzes trained models without modifying the project
 
 Usage:
-    python analyze_shap.py Project_Output_YYYYMMDD_HHMMSS
-    python analyze_shap.py Project_Output_YYYYMMDD_HHMMSS --models xgboost lightgbm
-    python analyze_shap.py Project_Output_YYYYMMDD_HHMMSS --sample-size 200
+    python analyze_shap.py Project_Output
+    python analyze_shap.py Project_Output --models xgboost lightgbm
+    python analyze_shap.py Project_Output --sample-size 200
 """
 
 import sys
@@ -569,17 +569,17 @@ def main():
         epilog="""
 Examples:
     # Analyze all models
-    python analyze_shap.py Project_Output_YYYYMMDD_HHMMSS
+    python analyze_shap.py Project_Output
 
     # Analyze XGBoost and LightGBM
-    python analyze_shap.py Project_Output_YYYYMMDD_HHMMSS --models xgboost lightgbm
+    python analyze_shap.py Project_Output --models xgboost lightgbm
 
     # Use a larger sample size
-    python analyze_shap.py Project_Output_YYYYMMDD_HHMMSS --sample-size 200
+    python analyze_shap.py Project_Output --sample-size 200
         """
     )
 
-    parser.add_argument('project_dir', help='Project output directory (e.g., Project_Output_YYYYMMDD_HHMMSS)')
+    parser.add_argument('project_dir', help='Project output directory (e.g., Project_Output)')
     parser.add_argument('--models', nargs='+', help='Models to analyze (e.g., xgboost lightgbm)')
     parser.add_argument('--sample-size', type=int, default=100, help='Sample size for SHAP analysis (default: 100)')
     parser.add_argument('--kernel-k', type=int, default=20, help='Background k-means clusters for KernelExplainer (default: 20)')

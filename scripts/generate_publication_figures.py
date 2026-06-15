@@ -750,7 +750,6 @@ def plot_figure_h(project_dir, output_dir):
     for candidate in [
         project_path / 'virtual_predictions_all.csv',
         project_path / 'virtual_predictions_filtered.csv',
-        project_path / 'outputs' / 'virtual_predictions_all.csv',
     ]:
         if candidate.exists():
             virtual_file = candidate

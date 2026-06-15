@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-Run manager for incremental experiment directories.
-
-Automatically creates runs/train, runs/train2, runs/train3 directories.
+Run manager for fixed experiment directories.
 """
 
 import os
@@ -30,13 +28,13 @@ class RunManager:
     
     def get_next_run_dir(self, name: Optional[str] = None, project: Optional[str] = None) -> Path:
         """
-        Get the next run directory
-        
-        Incremental naming:
-        - Default: runs/train, runs/train2, runs/train3, ...
-        - With name: runs/train/my_experiment
-        - With project: my_project/train, my_project/train2, ...
-        - With both: my_project/my_experiment
+        Get the run directory.
+
+        Naming:
+        - Default: runs/train
+        - With name: runs/<name>
+        - With project: <project>/train
+        - With both: <project>/<name>
         
         Args:
             name: Experiment name (optional)
@@ -61,50 +59,6 @@ class RunManager:
         run_dir.mkdir(parents=True, exist_ok=True)
         
         return run_dir
-    
-    def _get_increment_dir(self, base_path: Path, prefix: str) -> Path:
-        """
-        Get incremented directory
-        
-        Args:
-            base_path: Base path
-            prefix: Prefix (e.g., train)
-        
-        Returns:
-            Incremented directory path
-        """
-        # Find existing run directories
-        existing_runs = []
-        
-        # Matching pattern: prefix, prefix2, prefix3, ...
-        pattern = re.compile(f"^{re.escape(prefix)}(\\d*)$")
-        
-        # Scan directories
-        if base_path.exists():
-            for item in base_path.iterdir():
-                if item.is_dir():
-                    match = pattern.match(item.name)
-                    if match:
-                        num_str = match.group(1)
-                        if num_str == "":
-                            existing_runs.append(1)
-                        else:
-                            existing_runs.append(int(num_str))
-        
-        # Determine next index
-        if not existing_runs:
-            # First run, no number
-            next_dir = base_path / prefix
-        else:
-            # Find max index and add 1
-            max_num = max(existing_runs)
-            if max_num == 1 and 1 in existing_runs:
-                # If prefix exists (equivalent to prefix1), next is prefix2
-                next_dir = base_path / f"{prefix}2"
-            else:
-                next_dir = base_path / f"{prefix}{max_num + 1}"
-        
-        return next_dir
     
     @staticmethod
     def parse_run_path(path: str) -> Tuple[Optional[str], Optional[str]]:

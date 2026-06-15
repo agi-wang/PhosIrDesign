@@ -164,22 +164,6 @@ def load_trained_model(project_dir, model_name='xgboost', target='PLQY'):
             break
 
     if model_dir is None:
-        # Auto-discover latest Project_Output_* models
-        root = project_path.parent if project_path.name == 'Project_Output' else project_path
-        candidates = []
-        try:
-            for d in root.glob('Project_Output_*'):
-                mdir = d / 'all_models' / 'automl_train' / model_name / 'models'
-                if mdir.exists():
-                    candidates.append(mdir)
-            if candidates:
-                candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-                model_dir = candidates[0]
-                print(f"INFO: Switched to latest model directory: {model_dir}")
-        except Exception:
-            pass
-
-    if model_dir is None or not model_dir.exists():
         print(f"ERROR: Model directory not found: {project_path}/{model_name}/models")
         return None
 

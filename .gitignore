@@ -1,20 +1,32 @@
+# OS files
 .DS_Store
+
+# Python caches
 __pycache__/
-*.pyc
-/.pytest_cache/
-/.ruff_cache/
-/.mypy_cache/
-/.ipynb_checkpoints/
-/feature_cache/
-/catboost_info/
-/file_feature_cache/
-/.venv/
-/Project_Output*/
-/results/
-/audit/
-/paper/
-/config/
-/web/node_modules/
-/web/dist/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
 *.tsbuildinfo
-/data/ir_assemble_combinations.csv
+
+# Runtime outputs and caches
+Project_Output*/
+results/
+feature_cache/
+file_feature_cache/
+catboost_info/
+
+# Generated data
+data/ir_assemble_combinations.csv

@@ -7,6 +7,7 @@ Generates PLQY confusion matrix and related analysis plots from training results
 import argparse
 import sys
 import json
+import re
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -15,6 +16,32 @@ import numpy as np
 sys.path.append(str(Path(__file__).parent.parent))
 
 from phosirdesign.visualization.stratified_analysis import generate_stratified_analysis
+
+
+def canonical_target_name(raw_target: str) -> str:
+    """Normalize training target labels for stable output directory names."""
+    target = str(raw_target).strip()
+    target = target.replace('_all_predictions', '')
+    normalized = re.sub(r'[^A-Za-z0-9]+', '_', target).strip('_').lower()
+
+    if 'plqy' in normalized:
+        return 'plqy'
+    if 'wavelength' in normalized:
+        return 'wavelength'
+
+    return normalized or 'unknown'
+
+
+def prediction_dataset_key(model_name: str, prediction_stem: str) -> str:
+    """Build a stable stratified-analysis key from an AutoML prediction file."""
+    target = prediction_stem
+    model_prefix = f'{model_name}_'
+    if target.startswith(model_prefix):
+        target = target[len(model_prefix):]
+    if target.endswith('_all_predictions'):
+        target = target[:-len('_all_predictions')]
+
+    return f'{canonical_target_name(target)}_{model_name}'
 
 
 def load_predictions_from_project(project_dir: Path) -> dict:
@@ -95,35 +122,8 @@ def load_predictions_from_project(project_dir: Path) -> dict:
                     try:
                         df = pd.read_csv(pred_file)
                         
-                        # Parse target from filename
-                        filename = pred_file.stem  # e.g.: xgboost_PLQY_all_predictions
-                        parts = filename.split('_')
-                        
-                        # Find target name (after model name, before date)
-                        target = None
-                        for i, part in enumerate(parts):
-                            if part == model_name and i < len(parts) - 1:
-                                # Target name may contain multiple parts
-                                target_parts = []
-                                for j in range(i+1, len(parts)):
-                                    if parts[j].isdigit() and len(parts[j]) == 8:  # date part
-                                        break
-                                    target_parts.append(parts[j])
-                                if target_parts:
-                                    target = '_'.join(target_parts)
-                                    break
-                        
-                        if not target:
-                            # Fallback: check column names
-                            if 'Max_wavelength(nm)' in str(pred_file):
-                                target = 'wavelength'
-                            elif 'PLQY' in str(pred_file):
-                                target = 'PLQY'
-                            elif 'tau' in str(pred_file):
-                                target = 'tau'
-                        
-                        if target and 'true' in df.columns and 'predicted' in df.columns:
-                            key = f'{target}_{model_name}'
+                        if 'true' in df.columns and 'predicted' in df.columns:
+                            key = prediction_dataset_key(model_name, pred_file.stem)
                             predictions[key] = {
                                 'actual': df['true'].values,
                                 'predicted': df['predicted'].values
@@ -179,7 +179,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python generate_stratified_analysis.py --project Project_Output_YYYYMMDD_HHMMSS --output Project_Output_YYYYMMDD_HHMMSS/figures
+  python generate_stratified_analysis.py --project Project_Output --output Project_Output/figures
   python generate_stratified_analysis.py --project results/training_001
         """
     )

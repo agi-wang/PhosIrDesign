@@ -18,9 +18,22 @@ install_with_brew() {
   brew update || true
   for pkg in "$@"; do brew install "$pkg" || true; done
 }
-install_with_apt() { sudo apt-get update -y || true; sudo apt-get install -y "$@" || true; }
-install_with_yum() { sudo yum install -y "$@" || true; }
-install_with_pacman() { sudo pacman -Sy --noconfirm "$@" || true; }
+run_privileged() {
+  if [ "$(id -u)" = "0" ]; then
+    "$@"
+  elif command -v sudo >/dev/null; then
+    sudo "$@"
+  else
+    warn "Need root privileges or sudo to run: $*"
+    return 1
+  fi
+}
+install_with_apt() {
+  run_privileged apt-get update -y || true
+  run_privileged env DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" ca-certificates || true
+}
+install_with_yum() { run_privileged yum install -y "$@" || true; }
+install_with_pacman() { run_privileged pacman -Sy --noconfirm "$@" || true; }
 ensure_tool() {
   local t="$1"
   if command -v "$t" >/dev/null; then return 0; fi
@@ -35,6 +48,10 @@ ensure_tool() {
     install_with_pacman "$t"
   else
     warn "Unknown package manager; please install $t manually"
+  fi
+  if ! command -v "$t" >/dev/null; then
+    err "$t is still not available after installation attempt"
+    return 1
   fi
 }
 ensure_tool curl

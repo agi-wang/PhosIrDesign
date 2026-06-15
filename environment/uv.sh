@@ -6,6 +6,10 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VENV_PATH="$ROOT_DIR/.venv"
 REQUIREMENTS_FILE="$ROOT_DIR/environment/requirements.txt"
 PY_VER="${UV_PYTHON:-3.9}"
+XGBOOST_VERSION="${XGBOOST_VERSION:-2.1.4}"
+PATCHED_XGBOOST_WHEEL="${PATCHED_XGBOOST_WHEEL:-}"
+AUTO_BUILD_PATCHED_XGBOOST="${AUTO_BUILD_PATCHED_XGBOOST:-0}"
+INSTALL_TORCH="${INSTALL_TORCH:-0}"
 
 if [ "${UV_LOCAL_TEST:-0}" = "1" ]; then
   mkdir -p "$ROOT_DIR/Project_Output"
@@ -91,6 +95,206 @@ ensure_uv() {
 ensure_uv
 echo "uv version: $(uv --version)"
 
+run_privileged() {
+  if [ "$(id -u)" = "0" ]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    echo "WARNING: need root privileges or sudo to install: $*" >&2
+    return 1
+  fi
+}
+
+ensure_patched_xgboost_build_deps() {
+  OS_NAME="$(uname -s)"
+  if [ "$OS_NAME" != "Linux" ]; then
+    return
+  fi
+
+  missing=()
+  for tool in gcc g++ cmake patch; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      missing+=("$tool")
+    fi
+  done
+
+  if [ "${#missing[@]}" -gt 0 ] && command -v apt-get >/dev/null 2>&1; then
+    echo "Installing XGBoost source-build dependencies: build-essential cmake ninja-build patch"
+    run_privileged apt-get update -y
+    run_privileged env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      build-essential cmake ninja-build patch
+  fi
+
+  still_missing=()
+  for tool in gcc g++ cmake patch; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+      still_missing+=("$tool")
+    fi
+  done
+
+  if [ "${#still_missing[@]}" -gt 0 ]; then
+    echo "Missing XGBoost build tools: ${still_missing[*]}" >&2
+    exit 1
+  fi
+}
+
+ensure_linux_openmp_runtime() {
+  OS_NAME="$(uname -s)"
+  if [ "$OS_NAME" != "Linux" ]; then
+    return
+  fi
+
+  if command -v ldconfig >/dev/null 2>&1 && ldconfig -p 2>/dev/null | grep -q 'libgomp\.so\.1'; then
+    return
+  fi
+
+  if [ -e /usr/lib/x86_64-linux-gnu/libgomp.so.1 ] || [ -e /lib/x86_64-linux-gnu/libgomp.so.1 ]; then
+    return
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    echo "Installing Linux OpenMP runtime for XGBoost: libgomp1"
+    run_privileged apt-get update -y
+    run_privileged env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libgomp1
+  fi
+}
+
+find_cached_patched_xgboost_wheel() {
+  python - "$ROOT_DIR/wheelhouse" "$XGBOOST_VERSION" <<'PY'
+from pathlib import Path
+import sys
+
+from packaging.tags import sys_tags
+from packaging.utils import InvalidWheelFilename, parse_wheel_filename
+
+wheelhouse = Path(sys.argv[1])
+version = sys.argv[2]
+supported_tags = set(sys_tags())
+compatible = []
+
+for wheel in sorted(wheelhouse.glob(f"xgboost-{version}-*.whl")):
+    try:
+        name, wheel_version, _build, wheel_tags = parse_wheel_filename(wheel.name)
+    except InvalidWheelFilename as exc:
+        print(f"Skipping invalid patched XGBoost wheel: {wheel.name} ({exc})", file=sys.stderr)
+        continue
+
+    if name != "xgboost" or str(wheel_version) != version:
+        continue
+
+    if wheel_tags & supported_tags:
+        compatible.append(wheel)
+    else:
+        print(f"Skipping incompatible patched XGBoost wheel: {wheel.name}", file=sys.stderr)
+
+if compatible:
+    print(compatible[-1])
+PY
+}
+
+require_compatible_patched_xgboost_wheel() {
+  local wheel_path="$1"
+  python - "$wheel_path" "$XGBOOST_VERSION" <<'PY'
+from pathlib import Path
+import sys
+
+from packaging.tags import sys_tags
+from packaging.utils import parse_wheel_filename
+
+wheel = Path(sys.argv[1])
+expected_version = sys.argv[2]
+name, version, _build, wheel_tags = parse_wheel_filename(wheel.name)
+
+if name != "xgboost" or str(version) != expected_version:
+    raise SystemExit(f"Unexpected patched XGBoost wheel name/version: {wheel.name}")
+
+if not (wheel_tags & set(sys_tags())):
+    raise SystemExit(f"Incompatible patched XGBoost wheel for this Python/platform: {wheel.name}")
+PY
+}
+
+install_patched_xgboost() {
+  local patched_wheel="$PATCHED_XGBOOST_WHEEL"
+  local patch_file="$ROOT_DIR/patches/xgboost-$XGBOOST_VERSION-mac-libcxx-column-shuffle.patch"
+
+  echo "Note: original experiments were run on macOS; this XGBoost patch preserves data reproducibility."
+
+  if [ -n "$patched_wheel" ]; then
+    if [ ! -f "$patched_wheel" ]; then
+      echo "PATCHED_XGBOOST_WHEEL not found: $patched_wheel" >&2
+      exit 1
+    fi
+    require_compatible_patched_xgboost_wheel "$patched_wheel"
+  else
+    patched_wheel="$(find_cached_patched_xgboost_wheel)"
+  fi
+
+  if [ -n "$patched_wheel" ] && [ "$patch_file" -nt "$patched_wheel" ]; then
+    if [ "$AUTO_BUILD_PATCHED_XGBOOST" = "1" ]; then
+      echo "Cached patched XGBoost wheel is older than patch; rebuilding."
+      patched_wheel=""
+    else
+      echo "Cached patched XGBoost wheel is older than patch: $patched_wheel" >&2
+      echo "Rebuild it before running, or set AUTO_BUILD_PATCHED_XGBOOST=1 to allow source compilation." >&2
+      exit 1
+    fi
+  fi
+
+  if [ -z "$patched_wheel" ] && [ "$AUTO_BUILD_PATCHED_XGBOOST" = "1" ]; then
+    if [ ! -f "$patch_file" ]; then
+      echo "XGBoost patch file not found: $patch_file" >&2
+      exit 1
+    fi
+
+    ensure_patched_xgboost_build_deps
+    echo "Building patched XGBoost wheel..."
+    uv pip install pip wheel setuptools
+    PYTHON_BIN=python XGBOOST_VERSION="$XGBOOST_VERSION" \
+      "$ROOT_DIR/scripts/build_patched_xgboost_wheel.sh"
+    patched_wheel="$(find_cached_patched_xgboost_wheel)"
+  elif [ -n "$patched_wheel" ]; then
+    echo "Using prebuilt patched XGBoost wheel: $patched_wheel"
+  fi
+
+  if [ -z "$patched_wheel" ] || [ ! -f "$patched_wheel" ]; then
+    echo "Prebuilt patched XGBoost wheel not found in $ROOT_DIR/wheelhouse." >&2
+    echo "Add a Linux-compatible wheel, or set AUTO_BUILD_PATCHED_XGBOOST=1 to allow source compilation." >&2
+    exit 1
+  fi
+
+  ensure_linux_openmp_runtime
+
+  echo "Installing patched XGBoost wheel: $patched_wheel"
+  uv pip install --force-reinstall --no-deps "$patched_wheel"
+  python - <<'PY'
+import json
+import xgboost as xgb
+print("XGBoost version:", xgb.__version__)
+print("XGBoost build_info:", json.dumps(xgb.build_info(), sort_keys=True))
+PY
+}
+
+install_macos_xgboost() {
+  echo "macOS detected; installing unpatched XGBoost $XGBOOST_VERSION from PyPI."
+  uv pip install --force-reinstall --no-deps "xgboost==$XGBOOST_VERSION"
+  python - <<'PY'
+import json
+import xgboost as xgb
+print("XGBoost version:", xgb.__version__)
+print("XGBoost build_info:", json.dumps(xgb.build_info(), sort_keys=True))
+PY
+}
+
+install_xgboost() {
+  OS_NAME="$(uname -s)"
+  if [ "$OS_NAME" = "Darwin" ]; then
+    install_macos_xgboost
+  else
+    install_patched_xgboost
+  fi
+}
+
 # Auto-detect China mainland and set USTC mirror
 configure_china_mirror() {
   if [ -n "${UV_INDEX_URL:-}" ]; then
@@ -157,6 +361,8 @@ hash -r 2>/dev/null || true
 echo "Installing core requirements..."
 uv pip install -r "$REQUIREMENTS_FILE"
 
+install_xgboost
+
 python - <<'PY'
 from rdkit import rdBase
 expected = "2024.09.6"
@@ -166,9 +372,14 @@ if actual != expected:
 print(f"RDKit version: {actual}")
 PY
 
-echo ""
-echo "Installing PyTorch CPU wheel..."
-uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+if [ "$INSTALL_TORCH" = "1" ]; then
+  echo ""
+  echo "Installing optional PyTorch CPU wheel..."
+  uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+else
+  echo ""
+  echo "Skipping optional PyTorch install. Set INSTALL_TORCH=1 to install CPU-only PyTorch."
+fi
 
 echo ""
 echo "Installing extra ML utilities..."
@@ -186,3 +397,4 @@ echo "Python version: $(python --version)"
 echo ""
 echo "Activate with: source \"$VENV_PATH/bin/activate\""
 echo "To recreate: UV_RECREATE=1 UV_PYTHON=$PY_VER bash environment/uv.sh"
+echo "Optional PyTorch CPU install: INSTALL_TORCH=1 bash environment/uv.sh"

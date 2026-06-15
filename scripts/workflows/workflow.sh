@@ -6,29 +6,102 @@ ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT_DIR"
 SECONDS=0
 
+detect_codeocean() {
+  if [ "${CODEOCEAN:-0}" = "1" ]; then
+    return 0
+  fi
+
+  case "$ROOT_DIR" in
+    /code|/code/*|/root/capsule/code|/root/capsule/code/*)
+      [ -d /data ] && [ -d /results ] && return 0
+      ;;
+  esac
+
+  return 1
+}
+
+CODEOCEAN_MODE=0
+if detect_codeocean; then
+  CODEOCEAN_MODE=1
+fi
+CODEOCEAN_DATA_DIR="${CODEOCEAN_DATA_DIR:-/data}"
+CODEOCEAN_RESULTS_DIR="${CODEOCEAN_RESULTS_DIR:-/results}"
+
+prepare_codeocean_data_dir() {
+  if [ "$CODEOCEAN_MODE" != "1" ]; then
+    return
+  fi
+
+  if [ ! -d "$CODEOCEAN_DATA_DIR" ]; then
+    mkdir -p "$CODEOCEAN_DATA_DIR" 2>/dev/null || true
+  fi
+
+  if [ ! -d "$CODEOCEAN_DATA_DIR" ] || [ ! -w "$CODEOCEAN_DATA_DIR" ]; then
+    return
+  fi
+
+  local file_name
+  for file_name in PhosIrDB.csv ours.csv ir_assemble.csv; do
+    if [ ! -f "$CODEOCEAN_DATA_DIR/$file_name" ] && [ -f "$ROOT_DIR/data/$file_name" ]; then
+      cp "$ROOT_DIR/data/$file_name" "$CODEOCEAN_DATA_DIR/$file_name"
+    fi
+  done
+}
+
+codeocean_default_data_file() {
+  local file_name="$1"
+  local codeocean_path="$CODEOCEAN_DATA_DIR/$file_name"
+  local bundled_path="data/$file_name"
+
+  if [ -f "$codeocean_path" ]; then
+    printf '%s\n' "$codeocean_path"
+  elif [ -f "$bundled_path" ]; then
+    printf '%s\n' "$bundled_path"
+  else
+    printf '%s\n' "$codeocean_path"
+  fi
+}
+
+prepare_codeocean_data_dir
+
 # -----------------------------
 # User-tunable env vars (defaults)
 # -----------------------------
 if [ -z "${OUTPUT_DIR+x}" ] || [ -z "${OUTPUT_DIR}" ]; then
-  RUN_INDEX=1
-  while [ -e "$(printf 'Project_Output_run_%03d' "$RUN_INDEX")" ]; do
-    RUN_INDEX=$((RUN_INDEX + 1))
-  done
-  OUTPUT_DIR="$(printf 'Project_Output_run_%03d' "$RUN_INDEX")"
+  if [ "$CODEOCEAN_MODE" = "1" ]; then
+    OUTPUT_DIR="$CODEOCEAN_RESULTS_DIR/Project_Output"
+  else
+    OUTPUT_DIR="Project_Output"
+  fi
   OUTPUT_DIR_AUTO=1
 else
   OUTPUT_DIR_AUTO=0
 fi
-DATA_FILE="${DATA_FILE:-data/PhosIrDB.csv}"
-TEST_DATA_FILE="${TEST_DATA_FILE:-data/ours.csv}"
-VIRTUAL_FILE="${VIRTUAL_FILE:-data/ir_assemble.csv}"
+RESET_AUTO_OUTPUT="${RESET_AUTO_OUTPUT:-1}"
+if [ "$CODEOCEAN_MODE" = "1" ]; then
+  DEFAULT_DATA_FILE="$(codeocean_default_data_file PhosIrDB.csv)"
+  DEFAULT_TEST_DATA_FILE="$(codeocean_default_data_file ours.csv)"
+  DEFAULT_VIRTUAL_FILE="$(codeocean_default_data_file ir_assemble.csv)"
+else
+  DEFAULT_DATA_FILE="data/PhosIrDB.csv"
+  DEFAULT_TEST_DATA_FILE="data/ours.csv"
+  DEFAULT_VIRTUAL_FILE="data/ir_assemble.csv"
+fi
+DATA_FILE="${DATA_FILE:-$DEFAULT_DATA_FILE}"
+TEST_DATA_FILE="${TEST_DATA_FILE:-$DEFAULT_TEST_DATA_FILE}"
+VIRTUAL_FILE="${VIRTUAL_FILE:-$DEFAULT_VIRTUAL_FILE}"
 
 TRAIN_MODELS_DEFAULT="xgboost,lightgbm,random_forest,mlp,catboost,gradient_boosting,ridge,decision_tree"
 TRAIN_MODELS_FULL="adaboost,catboost,decision_tree,elastic_net,gradient_boosting,knn,lasso,lightgbm,random_forest,ridge,svr,xgboost,mlp"
 TRAIN_MODELS="${TRAIN_MODELS:-$TRAIN_MODELS_DEFAULT}"
 TRAIN_FULL="${TRAIN_FULL:-0}"
-TRAIN_TUI="${TRAIN_TUI:-1}"
-TRAIN_TUI_HOLD="${TRAIN_TUI_HOLD:-1}"
+if [ "$CODEOCEAN_MODE" = "1" ]; then
+  TRAIN_TUI="${TRAIN_TUI:-0}"
+  TRAIN_TUI_HOLD="${TRAIN_TUI_HOLD:-0}"
+else
+  TRAIN_TUI="${TRAIN_TUI:-1}"
+  TRAIN_TUI_HOLD="${TRAIN_TUI_HOLD:-1}"
+fi
 TRAIN_FOLDS="${TRAIN_FOLDS:-10}"
 FORCE_TRAIN="${FORCE_TRAIN:-1}"     # 1: always train; 0: reuse existing
 
@@ -43,6 +116,20 @@ TUI_PID=""
 info()  { echo "[INFO] $*"; }
 warn()  { echo "[WARN] $*" >&2; }
 error() { echo "[ERROR] $*" >&2; exit 1; }
+
+print_workflow_settings() {
+  echo "=========================================="
+  echo "Unified workflow"
+  echo "Elapsed: ${SECONDS}s"
+  echo "CodeOcean mode: $CODEOCEAN_MODE"
+  echo "Output: $OUTPUT_DIR"
+  echo "Data: $DATA_FILE"
+  echo "Test data: $TEST_DATA_FILE"
+  echo "Virtual DB: $VIRTUAL_FILE"
+  echo "TRAIN_TUI: $TRAIN_TUI"
+  echo "TRAIN_TUI_HOLD: $TRAIN_TUI_HOLD"
+  echo "=========================================="
+}
 
 progress_event() {
   local event_type="$1"
@@ -161,6 +248,20 @@ hold_tui_on_finish() {
 
 trap stop_tui EXIT
 
+if [ "${WORKFLOW_DRY_RUN:-0}" = "1" ]; then
+  print_workflow_settings
+  echo "Dry run: exiting before workflow execution."
+  exit 0
+fi
+
+if [ "$OUTPUT_DIR_AUTO" -eq 1 ] && [ "$RESET_AUTO_OUTPUT" = "1" ] && [ -e "$OUTPUT_DIR" ]; then
+  if [ "$(basename "$OUTPUT_DIR")" != "Project_Output" ]; then
+    error "Refusing to reset unexpected auto output directory: $OUTPUT_DIR"
+  fi
+  info "Resetting auto output directory: $OUTPUT_DIR"
+  rm -rf "$OUTPUT_DIR"
+fi
+
 if [ "$OUTPUT_DIR_AUTO" -ne 1 ] && [ -e "$OUTPUT_DIR" ]; then
   existing_artifacts=()
   [ -d "$OUTPUT_DIR/all_models/automl_train" ] && existing_artifacts+=("all_models/automl_train")
@@ -172,12 +273,7 @@ if [ "$OUTPUT_DIR_AUTO" -ne 1 ] && [ -e "$OUTPUT_DIR" ]; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
-
-echo "=========================================="
-echo "Unified workflow"
-echo "Elapsed: 0s"
-echo "Output: $OUTPUT_DIR"
-echo "=========================================="
+print_workflow_settings
 
 if [ "$TRAIN_FULL" = "1" ]; then
   TRAIN_MODELS="$TRAIN_MODELS_FULL"
@@ -204,7 +300,10 @@ fi
 
 if [ ! -f "$VIRTUAL_FILE" ]; then
   warn "Virtual DB not found ($VIRTUAL_FILE), generating..."
-  python "$ROOT_DIR/scripts/generate_virtual_database.py" 2>&1 | tee -a "$LOG_FILE"
+  python "$ROOT_DIR/scripts/generate_virtual_database.py" \
+    --data "$DATA_FILE" \
+    --project "$OUTPUT_DIR" \
+    --output "$VIRTUAL_FILE" 2>&1 | tee -a "$LOG_FILE"
 fi
 progress_event workflow_step_completed data_checks "Data checks"
 

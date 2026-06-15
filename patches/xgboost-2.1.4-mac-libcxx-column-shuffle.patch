@@ -1,0 +1,69 @@
+--- a/src/common/random.cc
++++ b/src/common/random.cc
+@@ -4,11 +4,57 @@
+ #include "random.h"
+ 
+ #include <algorithm>  // for sort, max, copy
++#include <cstdint>    // for uint64_t
++#include <iterator>   // for iterator_traits
+ #include <memory>     // for shared_ptr
+ 
+ #include "xgboost/host_device_vector.h"  // for HostDeviceVector
+ 
+ namespace xgboost::common {
++namespace {
++
++// Match the libc++ std::uniform_int_distribution path used by macOS wheels
++// for the small non-negative ranges used by column sampling. This avoids
++// relying on libstdc++'s different std::shuffle/distribution implementation.
++template <typename Rng>
++std::uint64_t MacLibcxxUniformIndex(Rng* rng, std::uint64_t upper) {
++  auto const range = upper + 1;
++  if (range == 1) {
++    return 0;
++  }
++
++  unsigned width = 0;
++  for (std::uint64_t value = range - 1; value != 0; value >>= 1) {
++    ++width;
++  }
++  std::uint64_t const mask =
++      width == 64 ? ~std::uint64_t{0} : ((std::uint64_t{1} << width) - 1);
++
++  std::uint64_t out;
++  do {
++    out = static_cast<std::uint64_t>((*rng)() - Rng::min()) & mask;
++  } while (out >= range);
++  return out;
++}
++
++template <typename Iter, typename Rng>
++void MacLibcxxShuffle(Iter first, Iter last, Rng* rng) {
++  using Diff = typename std::iterator_traits<Iter>::difference_type;
++  Diff dist = last - first;
++  if (dist <= 1) {
++    return;
++  }
++  for (--last, static_cast<void>(--dist); first < last; ++first, static_cast<void>(--dist)) {
++    auto const swap_index =
++        static_cast<Diff>(MacLibcxxUniformIndex(rng, static_cast<std::uint64_t>(dist)));
++    if (swap_index != 0) {
++      std::iter_swap(first, first + swap_index);
++    }
++  }
++}
++
++}  // namespace
++
+ std::shared_ptr<HostDeviceVector<bst_feature_t>> ColumnSampler::ColSample(
+     std::shared_ptr<HostDeviceVector<bst_feature_t>> p_features, float colsample) {
+   if (colsample == 1.0f) {
+@@ -48,7 +94,7 @@
+   } else {
+     new_features.Resize(features.size());
+     std::copy(features.begin(), features.end(), new_features.HostVector().begin());
+-    std::shuffle(new_features.HostVector().begin(), new_features.HostVector().end(), rng_);
++    MacLibcxxShuffle(new_features.HostVector().begin(), new_features.HostVector().end(), &rng_);
+     new_features.Resize(n);
+   }
+   std::sort(new_features.HostVector().begin(), new_features.HostVector().end());

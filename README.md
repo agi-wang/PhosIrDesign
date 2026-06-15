@@ -61,10 +61,10 @@ The repository root is intentionally minimal. The complete workflow is launched 
 bash run.sh
 ```
 
-By default, each run creates a fresh indexed output directory:
+By default, the workflow writes to a fixed output directory:
 
 ```text
-Project_Output_run_001/
+Project_Output/
 ```
 
 When `run.sh` is executed outside a checked-out project directory, it can clone the repository first and then run the same workflow entry point. The default clone URL points to:
@@ -99,13 +99,13 @@ Auxiliary experiment pickle files, fold-level NumPy archives, and Excel exports 
 
 ## Output Guide
 
-Workflow outputs are generated outside the tracked source tree. Local runs write a fresh indexed directory:
+Workflow outputs are generated outside the tracked source tree. Local runs write to:
 
 ```text
-Project_Output_run_001/
+Project_Output/
 ```
 
-The same artifact structure is packaged into the GitHub Release `Project_Output` archive.
+The default `Project_Output` directory is reset at the start of each automatic workflow run. In CodeOcean, the same structure is written under `/results/Project_Output`.
 
 | Output | What it represents |
 | --- | --- |
@@ -136,7 +136,7 @@ The root directory is kept intentionally small. The executable workflow starts f
 
 Several safeguards are included to make reruns traceable:
 
-- default execution writes to a new indexed output directory
+- default execution resets and writes to the fixed `Project_Output` directory
 - manually specified output directories are rejected if they already contain workflow artifacts
 - saved model checkpoints preserve the transformations needed for consistent local inference
 - public release packaging omits local paths, machine identifiers, and auxiliary intermediate binary archives

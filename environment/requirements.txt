@@ -3,10 +3,9 @@ numpy==1.26.4
 pandas==2.3.3
 scikit-learn==1.6.1
 scipy==1.13.1
-torch>=2.0.0
 
 # Gradient Boosting Models
-xgboost==2.1.4
+# XGBoost is installed by environment/uv.sh: upstream on macOS, patched wheel elsewhere.
 lightgbm==4.6.0
 catboost==1.2.10
 

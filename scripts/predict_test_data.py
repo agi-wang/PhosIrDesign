@@ -48,25 +48,7 @@ def load_models(project_dir, model_name='xgboost', use_intersection=False):
     
     if not model_dir.exists():
         print(f"ERROR: Model directory not found: {model_dir}")
-        # Try to auto-discover latest Project_Output_* model dir
-        root = Path(project_dir).parent if Path(project_dir).name == 'Project_Output' else Path(project_dir)
-        candidates = []
-        try:
-            for d in root.glob('Project_Output_*'):
-                mdir = d / 'all_models' / 'automl_train' / model_name / 'models'
-                if mdir.exists():
-                    candidates.append(mdir)
-            if candidates:
-                # Choose most recently modified dir
-                candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-                model_dir = candidates[0]
-                print(f"INFO: Auto-switched to latest model directory: {model_dir}")
-            else:
-                print("WARNING: No model directory found under recent Project_Output_* dirs")
-        except Exception:
-            pass
-        if not model_dir.exists():
-            return models
+        return models
     
     print(f"INFO: Model directory: {model_dir}")
     
@@ -286,19 +268,11 @@ def emit_ours_predictions_event(progress_file, model_name, output_path, df_predi
     with progress_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, ensure_ascii=True) + "\n")
 
-def _find_latest_project_dir() -> str:
-    """Find latest Project_Output_* directory under current working dir"""
-    cwd = Path.cwd()
-    projects = [d for d in cwd.glob('Project_Output_*') if d.is_dir()]
-    if not projects:
-        return ''
-    projects.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return str(projects[0])
-
 def main():
     parser = argparse.ArgumentParser(description='Predict test dataset')
     parser.add_argument('--project', '-p',
-                       help='Model project directory (default: latest Project_Output_* autodetect)')
+                       default='Project_Output',
+                       help='Model project directory (default: Project_Output)')
     parser.add_argument('--input', '-i', 
                        default=None,
                        help='Post-screening synthesized experimental data file (default: PROJECT/ours.csv)')
@@ -316,16 +290,6 @@ def main():
                        help='Number of molecular descriptors')
     
     args = parser.parse_args()
-    
-    # Auto-detect project directory
-    if not args.project:
-        latest = _find_latest_project_dir()
-        if latest:
-            args.project = latest
-            print(f"INFO: Auto-selected project dir: {args.project}")
-        else:
-            args.project = 'Project_Output'
-            print("INFO: No Project_Output_* dir found, fallback to default: Project_Output")
     
     # Resolve default paths
     if not args.output:

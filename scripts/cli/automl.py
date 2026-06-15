@@ -354,9 +354,16 @@ def train_command(args: List[str]):
     # Output configuration
     print("\nOutput Configuration:")
     print(f"   Project directory: {run_dir}")
-    print(f"   Models: {run_dir}/models/")
-    print(f"   Exports: {run_dir}/exports/")
-    print(f"   Feature importance: {run_dir}/feature_importance/")
+    if hasattr(config, 'models_to_train') and config.models_to_train:
+        print(f"   Model output root: {run_dir}/automl_train/")
+        print(f"   Per-model outputs: {run_dir}/automl_train/<model>/")
+        print(f"   Models: {run_dir}/automl_train/<model>/models/")
+        print(f"   Exports: {run_dir}/automl_train/<model>/exports/")
+        print(f"   Feature importance: {run_dir}/automl_train/<model>/feature_importance/")
+    else:
+        print(f"   Models: {run_dir}/models/")
+        print(f"   Exports: {run_dir}/exports/")
+        print(f"   Feature importance: {run_dir}/feature_importance/")
     
     print("\n" + "="*60)
     if hasattr(config, 'models_to_train') and config.models_to_train:

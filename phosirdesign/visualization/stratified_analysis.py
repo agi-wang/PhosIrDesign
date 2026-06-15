@@ -8,11 +8,21 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import re
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from sklearn.metrics import confusion_matrix, r2_score, mean_squared_error, mean_absolute_error
 import warnings
 warnings.filterwarnings('ignore')
+
+
+def normalize_stratified_dir_name(target: str) -> str:
+    """Return a stable directory name for stratified analysis output."""
+    name = str(target).replace('_all_predictions', '')
+    name = re.sub(r'[^A-Za-z0-9]+', '_', name).strip('_').lower()
+    name = re.sub(r'(?:max_)?wavelength(?:_?nm)?', 'wavelength', name)
+    name = re.sub(r'_+', '_', name).strip('_')
+    return name or 'unknown'
 
 
 def plot_plqy_confusion_matrix(
@@ -164,7 +174,7 @@ def plot_performance_by_range(
     """
     # Set default bins by target
     if bins is None:
-        if "PLQY" in target_name:
+        if "plqy" in target_name.lower():
             bins = [0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
             labels = ['0-0.1', '0.1-0.3', '0.3-0.5', '0.5-0.7', '0.7-0.9', '0.9-1.0']
         elif "wavelength" in target_name.lower():
@@ -312,11 +322,11 @@ def generate_stratified_analysis(
             continue
         
         # Create target subdirectory
-        target_dir = analysis_dir / target.replace('(', '').replace(')', '').replace('*', 'x')
+        target_dir = analysis_dir / normalize_stratified_dir_name(target)
         target_dir.mkdir(exist_ok=True)
         
         # Generate PLQY confusion matrix
-        if "PLQY" in target:
+        if "plqy" in target.lower():
             cm_result = plot_plqy_confusion_matrix(
                 actual, predicted, target_dir,
                 title=f"{target} Prediction Accuracy by Range"
