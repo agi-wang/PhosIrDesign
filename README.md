@@ -105,7 +105,7 @@ Workflow outputs are generated outside the tracked source tree. Local runs write
 Project_Output/
 ```
 
-The default `Project_Output` directory is reset at the start of each automatic workflow run. In CodeOcean, the same structure is written under `/results/Project_Output`.
+The default `Project_Output` directory is reset at the start of each automatic local workflow run. In CodeOcean, workflow artifacts are written directly under `/results`.
 
 | Output | What it represents |
 | --- | --- |

@@ -69,7 +69,7 @@ prepare_codeocean_data_dir
 # -----------------------------
 if [ -z "${OUTPUT_DIR+x}" ] || [ -z "${OUTPUT_DIR}" ]; then
   if [ "$CODEOCEAN_MODE" = "1" ]; then
-    OUTPUT_DIR="$CODEOCEAN_RESULTS_DIR/Project_Output"
+    OUTPUT_DIR="$CODEOCEAN_RESULTS_DIR"
   else
     OUTPUT_DIR="Project_Output"
   fi
@@ -247,11 +247,16 @@ if [ "${WORKFLOW_DRY_RUN:-0}" = "1" ]; then
 fi
 
 if [ "$OUTPUT_DIR_AUTO" -eq 1 ] && [ "$RESET_AUTO_OUTPUT" = "1" ] && [ -e "$OUTPUT_DIR" ]; then
-  if [ "$(basename "$OUTPUT_DIR")" != "Project_Output" ]; then
-    error "Refusing to reset unexpected auto output directory: $OUTPUT_DIR"
+  if [ "$CODEOCEAN_MODE" = "1" ] && [ "$OUTPUT_DIR" = "$CODEOCEAN_RESULTS_DIR" ]; then
+    info "Resetting generated contents in CodeOcean results directory: $OUTPUT_DIR"
+    find "$OUTPUT_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  else
+    if [ "$(basename "$OUTPUT_DIR")" != "Project_Output" ]; then
+      error "Refusing to reset unexpected auto output directory: $OUTPUT_DIR"
+    fi
+    info "Resetting auto output directory: $OUTPUT_DIR"
+    rm -rf "$OUTPUT_DIR"
   fi
-  info "Resetting auto output directory: $OUTPUT_DIR"
-  rm -rf "$OUTPUT_DIR"
 fi
 
 if [ "$OUTPUT_DIR_AUTO" -ne 1 ] && [ -e "$OUTPUT_DIR" ]; then
