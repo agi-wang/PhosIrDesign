@@ -435,6 +435,8 @@ class TrainingLogger:
                 'target': self.current_experiment.get('target', 'unknown'),
                     'feature_type': self.current_experiment.get('feature_type', 'unknown'),
                     'n_folds': self.current_experiment.get('n_folds', 0),
+                    'n_samples': self.current_experiment.get('n_samples', 0),
+                    'n_features': self.current_experiment.get('n_features', 0),
                     'run_sequence': self.current_experiment.get('run_sequence', 0),
                 'mean_rmse': summary_metrics.get('rmse_mean', 0),
                 'std_rmse': summary_metrics.get('rmse_std', 0),

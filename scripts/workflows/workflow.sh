@@ -176,14 +176,6 @@ event = {
     "training_data_path": str(data_path),
     "training_data_rows": row_count,
     "output_dir": output_dir,
-    "screen_operations": [
-        "Ctrl+C: exit final TUI",
-        "TRAIN_TUI=0 bash run.sh: disable TUI",
-        "TRAIN_TUI_HOLD=0 bash run.sh: exit TUI automatically",
-        "screen -S phosir bash run.sh: run workflow in screen",
-        "Ctrl+A then D: detach screen",
-        "screen -r phosir: resume screen",
-    ],
     "elapsed_seconds": elapsed,
 }
 progress_path.parent.mkdir(parents=True, exist_ok=True)

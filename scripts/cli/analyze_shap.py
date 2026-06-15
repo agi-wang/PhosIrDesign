@@ -557,7 +557,6 @@ class ModelShapAnalyzer:
             f.write(html)
 
         print(f"INFO: Report generated: {report_path}")
-        print(f"Open in browser: file://{report_path.absolute()}")
 
         return report_path
 

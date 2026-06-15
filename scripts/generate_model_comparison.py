@@ -12,6 +12,23 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import argparse
 
+
+def load_complete_metadata(summary_file: Path) -> dict:
+    """Load fields missing from legacy AutoML summary JSON files."""
+    complete_file = summary_file.parent / 'json' / summary_file.name.replace(
+        '_summary.json',
+        '_complete.json',
+    )
+    if not complete_file.exists():
+        return {}
+
+    try:
+        with open(complete_file, 'r') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
 def collect_model_results(output_dir):
     """Collect training results for all models"""
     output_dir = Path(output_dir)
@@ -50,7 +67,7 @@ def collect_model_results(output_dir):
                         # Format model display name
                         model_display_name = model_name.upper()
                         if model_name == 'mlp':
-                            model_display_name = 'MLP (Neural Network)'
+                            model_display_name = 'MLP Regressor'
                         elif model_name == 'mlp_torch_mps':
                             model_display_name = 'MLP Torch/MPS'
                         elif model_name == 'svr':
@@ -78,6 +95,8 @@ def collect_model_results(output_dir):
                         elif model_name == 'ridge':
                             model_display_name = 'Ridge'
 
+                        complete_metadata = load_complete_metadata(summary_file)
+
                         results.append({
                             'Model': model_display_name,
                             'Type': 'AutoML',
@@ -89,7 +108,7 @@ def collect_model_results(output_dir):
                             'MAE_mean': data.get('mean_mae', 0),
                             'MAE_std': data.get('std_mae', 0),
                             'N_folds': data.get('n_folds', 10),
-                            'Training_samples': data.get('n_samples', 0),
+                            'Training_samples': data.get('n_samples') or complete_metadata.get('n_samples', 0),
                             'Test_samples': 0  # AutoML uses cross-validation
                         })
                         print(f"INFO: Loaded summary for {model_name} - {display_target}")

@@ -699,6 +699,29 @@ def train_command(args: List[str]):
                 # 5) Optional homepage index.html
                 try:
                     index_path = report_dir / 'index.html'
+                    table_link = _Path(exported.get('html', '')).name if exported else ''
+                    link_items = []
+                    if table_link:
+                        link_items.append((table_link, 'Comparison Table (HTML)'))
+                    link_items.append(('summary.json', 'Summary (JSON)'))
+                    for timing_file, label in (
+                        (_Path(run_dir) / 'timing_summary.json', 'Timing Summary'),
+                        (_Path(run_dir) / 'timing_detail.json', 'Timing Detail'),
+                    ):
+                        if timing_file.exists():
+                            link_items.append((f"../{timing_file.name}", label))
+                    for figure_file, label in (
+                        ('figure_c_wavelength_plqy.png', 'Figure C'),
+                        ('figure_d_plqy_distribution.png', 'Figure D'),
+                        ('figure_e_f_predictions.png', 'Figure E-F'),
+                        ('figure_g_plqy_accuracy.png', 'Figure G'),
+                    ):
+                        if (report_dir / figure_file).exists():
+                            link_items.append((figure_file, label))
+                    links_html = "\n".join(
+                        f'                        <li><a href="{href}">{label}</a></li>'
+                        for href, label in link_items
+                    )
                     index_html = f"""
                     <!DOCTYPE html>
                     <html>
@@ -706,14 +729,7 @@ def train_command(args: List[str]):
                     <body>
                       <h1>Report Package</h1>
                       <ul>
-                        <li><a href="{_Path(exported.get('html','')).name if exported else ''}">Comparison Table (HTML)</a></li>
-                        <li><a href="summary.json">Summary (JSON)</a></li>
-                        <li><a href="../timing_summary.json">Timing Summary</a></li>
-                        <li><a href="../timing_detail.json">Timing Detail</a></li>
-                        <li><a href="figure_c_wavelength_plqy.png">Figure C</a></li>
-                        <li><a href="figure_d_plqy_distribution.png">Figure D</a></li>
-                        <li><a href="figure_e_f_predictions.png">Figure E-F</a></li>
-                        <li><a href="figure_g_plqy_accuracy.png">Figure G</a></li>
+{links_html}
                       </ul>
                     </body>
                     </html>
@@ -770,7 +786,7 @@ def train_command(args: List[str]):
                     [p for p in run_dir.glob("**/*.joblib")],
                     key=lambda p: p.stat().st_mtime
                 )
-            if model_paths:
+            if model_paths and os.environ.get('SHOW_PREDICTION_EXAMPLES') == '1':
                 print("\nExample prediction commands (copy to run; listed by model):")
                 for mp in model_paths:
                     print(f"  # {mp.name}")
@@ -783,6 +799,9 @@ def train_command(args: List[str]):
                     print(f"  python automl.py predict {model_param} input='[[\"[C-]1=C(C2=NC=CC3=CC=CC=C23)C=CC=C1\",\"[C-]1=C(C2=NC=CC3=CC=CC=C23)C=CC=C1\",\"C1=CN=C(C2=CN(CCCCCCN3C4=CC=CC=C4C4=C3C=CC=C4)N=N2)C=C1\"]]' feature=combined")
                     # Two samples: repeat the triple as the second sample
                     print(f"  python automl.py predict {model_param} input='[[\"[C-]1=C(C2=NC=CC3=CC=CC=C23)C=CC=C1\",\"[C-]1=C(C2=NC=CC3=CC=CC=C23)C=CC=C1\",\"C1=CN=C(C2=CN(CCCCCCN3C4=CC=CC=C4C4=C3C=CC=C4)N=N2)C=C1\"],[\"[C-]1=C(C2=NC=CC3=CC=CC=C23)C=CC=C1\",\"[C-]1=C(C2=NC=CC3=CC=CC=C23)C=CC=C1\",\"C1=CN=C(C2=CN(CCCCCCN3C4=CC=CC=C4C4=C3C=CC=C4)N=N2)C=C1\"]]' feature=combined")
+            elif model_paths:
+                print(f"\nINFO: Final model files generated: {len(model_paths)}")
+                print("INFO: Set SHOW_PREDICTION_EXAMPLES=1 to print example prediction commands.")
         except Exception:
             pass
         
@@ -813,11 +832,13 @@ def train_command(args: List[str]):
                     [p for p in models_dir.glob("*.joblib")],
                     key=lambda p: p.stat().st_mtime
                 )
-            if model_paths:
+            if model_paths and os.environ.get('SHOW_PREDICTION_EXAMPLES') == '1':
                 print("\nINFO: Example prediction commands for completed models:")
                 for mp in model_paths:
                     print(f"  # {mp.name}")
                     print(f"  python automl.py predict model={mp} input='[[\"[C-]1=C(C2=NC=CC3=CC=CC=C23)C=CC=C1\",\"[C-]1=C(C2=NC=CC3=CC=CC=C23)C=CC=C1\",\"C1=CN=C(C2=CN(CCCCCCN3C4=CC=CC=C4C4=C3C=CC=C4)N=N2)C=C1\"]]' feature=combined")
+            elif model_paths:
+                print(f"INFO: Completed model files available: {len(model_paths)}")
             else:
                 print("WARNING: No model files have been produced yet.")
         except Exception:

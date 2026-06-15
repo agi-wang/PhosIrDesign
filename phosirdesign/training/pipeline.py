@@ -774,7 +774,11 @@ class TrainingPipeline:
                 print(f"File: {test_path.name}")
                 if test_path.exists():
                     print("Status: file exists")
-                    print(f"Path: {test_path.resolve()}")
+                    try:
+                        display_path = test_path.resolve().relative_to(Path.cwd().resolve())
+                    except ValueError:
+                        display_path = test_path.name
+                    print(f"Path: {display_path}")
                     with self.timing.measure('data_load_test'):
                         df_test = pd.read_csv(test_path)
                     # Prepare test features: same as training flow
